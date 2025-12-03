@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import time
 from google.cloud import bigquery
+from google.oauth2 import service_account
 import google.generativeai as genai
 from dotenv import load_dotenv
 from google.api_core.exceptions import NotFound, TooManyRequests
@@ -27,28 +28,31 @@ def get_crypto_data():
     # load env vars from .env file for local development
     load_dotenv()
     
-    project_id = os.getenv("GCP_PROJECT")
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        # this check helps local setup
-        raise Exception("GOOGLE_APPLICATION_CREDENTIALS environment variable not set.")
-    
     try:
+        # running in streamlit cloud, use secrets
+        import streamlit as st
+        
+        creds_dict = st.secrets["gcp_service_account"]
+        project_id = creds_dict["project_id"]
+        credentials = service_account.Credentials.from_service_account_info(creds_dict)
+        bq_client = bigquery.Client(project=project_id, credentials=credentials)
+        
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"]) # type: ignore
+        model = genai.GenerativeModel('gemini-2.5-flash') # type: ignore
+
+    except (KeyError, FileNotFoundError):
+        # running locally, use env vars
+        project_id = os.getenv("GCP_PROJECT")
+        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            # this check helps local setup
+            raise Exception("GOOGLE_APPLICATION_CREDENTIALS environment variable not set.")
+        bq_client = bigquery.Client(project=project_id)
+        
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not found.")
         genai.configure(api_key=api_key) # type: ignore
         model = genai.GenerativeModel('gemini-2.5-flash') # type: ignore
-    except Exception as e:
-        # fallback for streamlit cloud secrets
-        try:
-            import streamlit as st
-            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"]) # type: ignore
-            model = genai.GenerativeModel('gemini-2.5-flash') # type: ignore
-        except Exception as st_e:
-            print(f"failed to configure gemini. error: {st_e}")
-            raise
-
-    bq_client = bigquery.Client(project=project_id)
 
     sql = """
     SELECT

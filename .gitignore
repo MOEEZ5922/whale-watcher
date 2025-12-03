@@ -1,0 +1,7 @@
+.env
+key.json
+dex-analyst-aad9249badca.json
+.venv/
+__pycache__/
+GEMINI.md
+.vscode/
